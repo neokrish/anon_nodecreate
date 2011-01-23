@@ -1,0 +1,5 @@
+; $Id$
+name = Anon Node Create
+description = Creates user or links existing users to node when created as anon user.
+package = Neo Krish
+core = 6.x
