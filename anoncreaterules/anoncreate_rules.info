@@ -1,0 +1,6 @@
+; $Id: 
+name = "New Rules"
+description = "Testing rules integration"
+core = "6.x"
+
+dependencies[] = rules

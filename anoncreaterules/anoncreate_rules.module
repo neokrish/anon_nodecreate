@@ -1,0 +1,22 @@
+<?php
+// $Id$
+
+
+/**
+ * @file 
+ * Anon Create Rules module
+ *
+ * This module provides integration of Anon Node Create module with Rules module
+ */
+
+
+
+/**
+ * Implement hook_nodeapi()
+ * 
+ */
+function anoncreate_rules_nodeapi (&$node, $op, $a3 = NULL, $a4 = NULL) {
+  if ($op == 'insert') {
+      rules_invoke_event('anoncreate_rules_newuser', $user_edit);
+  }
+}
