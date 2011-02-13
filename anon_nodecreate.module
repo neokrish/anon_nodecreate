@@ -109,7 +109,7 @@ function anon_nodecreate_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
 function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
   global $user;
 
-  if (substr($form_id, -10)=='_node_form') {
+  if (((substr($form_id, -10)=='_node_form') && (!$user->uid))) {
     // Alter the node type's configuration form to add our setting. We don't
     // need to worry about saving this value back to the variable, the form
     // we're altering will do it for us.
@@ -125,6 +125,9 @@ function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
       '#title' => t('New User'),
       '#description' => t('If you are a new user, please type in your email and preferred username. You will receive your account information on email.'),
     );
+    $form['anon_nodecreate'] ['new_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_register');
+
+/*
     $form['anon_nodecreate'] ['new_user'] ['email'] = array(
       '#type' => 'textfield',
       '#title' => 'Email',
@@ -135,23 +138,38 @@ function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
     );
     $form['anon_nodecreate'] ['new_user'] ['password'] = array(
       '#type' => 'password_confirm',
-    );
+    ); */
     $form['anon_nodecreate']['existing_user'] = array(
       '#type' => 'fieldset',
       '#title' => t('Existing User'),
       '#description' => t('If you already have an account, please type in your login details '),
     );
-    $form['anon_nodecreate'] ['existing_user'] ['username'] = array(
+    $form['anon_nodecreate'] ['existing_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_login'); 
+/*    $form['anon_nodecreate'] ['existing_user'] ['username'] = array(
       '#type' => 'textfield',
       '#title' => 'Username',
     );
     $form['anon_nodecreate'] ['existing_user'] ['password'] = array(
       '#type' => 'password',
       '#title' => 'Password',
-    );      
+    );      */
   }
 }
 
+function anon_nodecreate_get_user_form($form_id) {
+  switch ($form_id) {
+    case 'user_register':
+      $form = drupal_retrieve_form('user_register', $form_state); 
+      unset($form['submit']);
+      return $form;
+    break;
+    case 'user_login':
+      $form = drupal_retrieve_form('user_login', $form_state);
+      unset($form['submit']); 
+      return $form;    
+    break;
+  }
+}
 function anon_nodecreate_settings() {
    
    
