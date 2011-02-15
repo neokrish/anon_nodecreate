@@ -18,25 +18,9 @@ function anon_nodecreate_menu() {
     'title' => 'Anon Node Create Settings',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('anon_nodecreate_settings'),
+    'access arguments' => array('access content'), 
+    'type' => MENU_NORMAL_ITEM,
   );
-  // more complex menu item
-  /*
-  $items['TODO: Enter path'] = array(
-    'title' => 'TODO: Enter menu item title',
-    'description' => 'TODO: Enter description',
-    'page callback' => 'TODO: Enter callback function',
-    'page arguments' => '', // An array of arguments to pass to the page callback function. Integer values pass the corresponding URL component.
-    'access callback' => '', // defaults to user_access()
-    'access arguments' => array('TODO: Enter user permissions'),
-    'weight' => 0,
-    'type' => MENU_NORMAL_ITEM, // One of MENU_NORMAL_ITEM / MENU_CALLBACK / MENU_SUGGESTED_ITEM / MENU_LOCAL_TASK / MENU_DEFAULT_LOCAL_TASK
-    'menu_name' => '', // Menu to place this item in.
-    'title callback' => '', // Function to generate the title, defaults to t(). 
-    'title arguments' => '', // Arguments to send to t() or your custom callback. 
-  );
-  */
-  // OPTIONAL: Fill in additional static menu items
-
   return $items;
 }
 
@@ -110,9 +94,6 @@ function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
   global $user;
 
   if (((substr($form_id, -10)=='_node_form') && (!$user->uid))) {
-    // Alter the node type's configuration form to add our setting. We don't
-    // need to worry about saving this value back to the variable, the form
-    // we're altering will do it for us.
     $form['anon_nodecreate'] = array(
       '#type' => 'fieldset',
       '#title' => t('User account details'),
@@ -171,8 +152,22 @@ function anon_nodecreate_get_user_form($form_id) {
   }
 }
 function anon_nodecreate_settings() {
-   
-   
+  $form['anon_nodecreate'] ['option_set1'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'User Registration Option',
+  );
+  $form['anon_nodecreate'] ['option_set1']['anon_create_register'] = array(
+    '#type' => 'radios',
+    '#title' => 'Registration fields',
+    '#options' => array('0' => 'Use default registration fields',
+       '1' => 'Provide only email field for registration',
+       '2' => 'Provide email and username field for registration'
+    ),
+    '#default_value' => variable_get('anon_create_register', NULL),
+    '#description' => 'Select the fields to be present while node is created anonymously',
+  );
+
+ return system_settings_form($form);
 }
 
 function neodsm($variable) {
