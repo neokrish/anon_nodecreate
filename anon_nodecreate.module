@@ -7,13 +7,14 @@
 
 define("NEWUSER", "0");
 define("EXISTINGUSER", "1");
+define("ANONUSER", "2");
 
 
 /**
  * Implementation of hook_menu().
  */
 function anon_nodecreate_menu() { 
-  // This is the minimum information you can provide for a menu item.
+  
   $items['admin/settings/anon_nodecreate'] = array(
     'title' => 'Anon Node Create Settings',
     'page callback' => 'drupal_get_form',
@@ -30,63 +31,76 @@ function anon_nodecreate_menu() {
  */
 function anon_nodecreate_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
   switch ($op) {
+    case 'insert':
+      if($_SESSION ['anon_user']) {
+        $user = $_SESSION ['anon_user']['user'];
+	if($_SESSION ['anon_user']['type'] == NEWUSER) {
+          rules_invoke_event('anon_nodecreate_rules_newuser', $user);
+          unset($_SESSION ['anon_user']);
+        } else if($_SESSION ['anon_user']['type'] == EXISTINGUSER) {
+	  rules_invoke_event('anon_nodecreate_rules_existinguser', $user);      
+          unset($_SESSION ['anon_user']);
+        }
+      }
+      break;
     case 'presave':
-      global $user;
-      $node->uid = $user->uid;
-      neodsm($node);
+      if ($user = $_SESSION ['anon_user']['user']) $node->uid = $user->uid;
       break;
     case 'validate':
       // check if we are processing an anon node form submission.
       global $user;
       if(!($user->uid)) {
-        $new_user = $node->anon_nodecreate['new_user'];
-        $existing_user = $node->anon_nodecreate['existing_user'];
-          if ( !(empty($new_user['email']) && empty($new_user['username']) && empty($new_user['password']) ) ) {
-            $new_user = array(
-              'name' => $new_user['username'],
-              'pass' => $new_user['password'], // note: do not md5 the password
-              'mail' => $new_user['email'],
-              'status' => 1,
-              'init' => $new_user['email']
-            ); 
-//            TODO: Check existance of username and email in db before creating new user account.
-/*            $user_exists_byname = user_load(array(
-              'name' => $new_user['username']
-            ));
-            $user_exists_byemail = user_load(array(
-              'mail' => $new_user['email']
-            ));
-            neodsm($user_exists_byname);
-            if ($user_exists_byname->uid != 0) {
-                  form_set_error('anon_nodecreate][new_user][username', t('Username already in use. Please enter a different username.'));            
-            } else if ($user_exists_byemail->uid != 0) {
-                  form_set_error('anon_nodecreate][new_user][email', t('A user already exists using the entered email. If you are already have an account, please fill in Existing User details, instead of New User.'));
-            } else { 
-*/
-                $user = user_save(NULL, $new_user);
-                $account = user_authenticate($new_user);
-                if(!$account) {
-                  form_set_error('anon_nodecreate][new_user', t('Cannot create an account with the provided details. Please re-enter.'));  
-                } 
-//            }
-          } else if ( !(empty($existing_user['username']) && empty($existing_user['password'])) ) {
-            $existing_user = array(
-              'name' => $existing_user['username'],
-              'pass' => $existing_user['password'],
-            );
-            $account = user_authenticate($existing_user);
-            if(!$account) {
-              form_set_error('anon_nodecreate][existing_user', t('Incorrect login details. If you do not have an account, please type in new user info, before submitting the content.'));  
-            }
-          } else {	
-              form_set_error('anon_nodecreate', t('You must either provide new user details or provide existing user login.'));
-          }
+        $new_user = $node->anon_nodecreate['new_user'] ['form_fields'];
+        $existing_user = $node->anon_nodecreate['existing_user'] ['form_fields'];
+        $status = anon_nodecreate_validate_user_details($new_user, $existing_user);
+          
+	if($_SESSION ['anon_user']['immediate_login']) {
+	 // global $user;
+	 // $user = $status['user'];
+	}
+        
       }
       break;
   }
 }
 
-
+/**
+ *
+ */
+function anon_nodecreate_validate_user_details($new_user, $existing_user) {
+  if($new_user['name']) {
+    // we are registering new user
+    foreach($new_user as $key => $value) {
+      $form_state['values'][$key] = $value;
+    }   
+    logintoboggan_user_register_submit($form, $form_state);
+    //drupal_execute('user_register', $form_state);
+    $_SESSION ['anon_user']['type'] = NEWUSER;
+    $_SESSION ['anon_user']['immediate_login'] = TRUE;
+    $_SESSION ['anon_user']['user'] = $form_state['user'];
+    if($_SESSION ['anon_user']['immediate_login']) {
+      global $user;
+      $user = user_load($_SESSION ['anon_user']['user']->uid);
+    }
+  } 
+  else if($existing_user['name']) {
+      foreach($existing_user as $key => $value) {
+	$form_state['values'][$key] = $value;
+      }
+     drupal_execute('user_login', $form_state);
+     global $user;
+     if($user->uid) {
+	$_SESSION ['anon_user']['type'] = EXISTINGUSER;
+	$_SESSION ['anon_user']['immediate_login'] = TRUE;
+	$_SESSION ['anon_user']['user'] = $user;
+     }
+  } 
+  else {
+     $_SESSION ['anon_user']['type'] = ANONUSER;   
+  }
+  //drupal_execute('user_register',)
+  return $status;
+}
 /**
  * Implementation of hook_form_alter().
  */
@@ -108,32 +122,13 @@ function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
     );
     $form['anon_nodecreate'] ['new_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_register');
 
-/*
-    $form['anon_nodecreate'] ['new_user'] ['email'] = array(
-      '#type' => 'textfield',
-      '#title' => 'Email',
-    );
-    $form['anon_nodecreate'] ['new_user'] ['username'] = array(
-      '#type' => 'textfield',
-      '#title' => 'User Name',
-    );
-    $form['anon_nodecreate'] ['new_user'] ['password'] = array(
-      '#type' => 'password_confirm',
-    ); */
     $form['anon_nodecreate']['existing_user'] = array(
       '#type' => 'fieldset',
       '#title' => t('Existing User'),
       '#description' => t('If you already have an account, please type in your login details '),
     );
     $form['anon_nodecreate'] ['existing_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_login'); 
-/*    $form['anon_nodecreate'] ['existing_user'] ['username'] = array(
-      '#type' => 'textfield',
-      '#title' => 'Username',
-    );
-    $form['anon_nodecreate'] ['existing_user'] ['password'] = array(
-      '#type' => 'password',
-      '#title' => 'Password',
-    );      */
+
   }
 }
 
@@ -141,11 +136,23 @@ function anon_nodecreate_get_user_form($form_id) {
   switch ($form_id) {
     case 'user_register':
       $form = drupal_retrieve_form('user_register', $form_state); 
+      foreach($form as &$value) {
+        if($value['#required']) {
+          $value['#required'] = 0;
+        } 
+
+      }
       unset($form['submit']);
       return $form;
     break;
     case 'user_login':
       $form = drupal_retrieve_form('user_login', $form_state);
+      foreach($form as &$value) {
+        if($value['#required']) {
+          $value['#required'] = 0;
+        } 
+
+      }
       unset($form['submit']); 
       return $form;    
     break;
