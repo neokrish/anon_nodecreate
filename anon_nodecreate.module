@@ -31,57 +31,116 @@ function anon_nodecreate_menu() {
  */
 function anon_nodecreate_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
   switch ($op) {
-    case 'insert':
+    case 'insert': // invoke appropriate rules hooks after node creation.
       if($_SESSION ['anon_user']) {
         $user = $_SESSION ['anon_user']['user'];
 	if($_SESSION ['anon_user']['type'] == NEWUSER) {
           rules_invoke_event('anon_nodecreate_rules_newuser', $user);
           unset($_SESSION ['anon_user']);
-        } else if($_SESSION ['anon_user']['type'] == EXISTINGUSER) {
+        } 
+          else if($_SESSION ['anon_user']['type'] == EXISTINGUSER) {
 	  rules_invoke_event('anon_nodecreate_rules_existinguser', $user);      
           unset($_SESSION ['anon_user']);
+        } 
+        else {
+	  if($_SESSION ['anon_user']['type'] == ANONUSER) {
+	    $path = 'node/' . $node->nid . '/edit';
+	    rules_invoke_event('anon_nodecreate_rules_anonuser', $user);
+	    drupal_goto($path);
+	  }            
         }
       }
       break;
-    case 'presave':
+    case 'presave': // change the user id
       if ($user = $_SESSION ['anon_user']['user']) $node->uid = $user->uid;
       break;
-    case 'validate':
-      // check if we are processing an anon node form submission.
+
+    case 'validate':      
       global $user;
-      if(!($user->uid)) {
-        $new_user = $node->anon_nodecreate['new_user'] ['form_fields'];
-        $existing_user = $node->anon_nodecreate['existing_user'] ['form_fields'];
-        $status = anon_nodecreate_validate_user_details($new_user, $existing_user);
-          
-	if($_SESSION ['anon_user']['immediate_login']) {
-	 // global $user;
-	 // $user = $status['user'];
-	}
-        
-      }
+      if(!($user->uid)) { // check if we are processing an anon node form submission.
+        $new_user = $node->anon_nodecreate['tabset']['new_user'] ['form_fields'];
+        $existing_user = $node->anon_nodecreate['tabset']['existing_user'] ['form_fields'];
+        anon_nodecreate_validate_user_details($new_user, $existing_user);               
+      }          
       break;
   }
 }
 
 /**
+ * Check if the user has entered all the required fields. 
  *
+ * We cannot check if the user has entered either new_user or existing_user data using standard #required attribute in $form.
  */
+
 function anon_nodecreate_validate_user_details($new_user, $existing_user) {
-  if($new_user['name']) {
+   $form = drupal_retrieve_form('user_register', $form_state);    
+   foreach($form as $key => &$value) {
+        if($value['#required']) {
+          if(!$new_user[$key]) {
+            $newuser_error = TRUE;
+          }
+        } 
+   }
+
+   $form = drupal_retrieve_form('user_login', $form_state);    
+   foreach($form as $key => &$value) {
+        if($value['#required']) {
+          if(!$existing_user[$key]) {
+            $existinguser_error = TRUE;
+          }
+        } 
+   }
+  if($newuser_error) {
+      $_SESSION ['anon_user']['type'] = EXISTINGUSER;
+  } else if ($existinguser_error) {
+      $_SESSION ['anon_user']['type'] = NEWUSER;
+  } else {
+      $_SESSION ['anon_user']['type'] = ANONUSER;
+  }
+  $donot_allow_anon = variable_get('anon_create_node', '1');
+  if($newuser_error && $existinguser_error && $donot_allow_anon == '1') {
+    form_set_error('anon_nodecreate[new_user][form_fields][name', t('User details are not entered.'));    
+  } else {
+    anon_nodecreate_create_user($new_user, $existing_user);  
+  }
+   
+}
+
+/**
+ * Creates an user object  by either creating a new user or loading an existing user account
+ */
+
+
+function anon_nodecreate_create_user($new_user, $existing_user) {
+  if(($new_user['name']) && (!$_SESSION['anon_user']['user']->uid)) {
+    $name = $new_user['name'];
+    $mail = $new_user['mail'];
+    if (db_result(db_query("SELECT COUNT(*) FROM {users} WHERE name = '%s';", $name))) {
+      form_set_error('anon_nodecreate[new_user][form_fields][name', t('User name already exists. Please choose a different username.')); 
+      return;
+    }
+    if (db_result(db_query("SELECT COUNT(*) FROM {users} WHERE mail = '%s';", $mail))) {
+      form_set_error('anon_nodecreate[new_user][form_fields][name', t('Provided email address is already registered. Please login.')); 
+      return;
+    }
+
     // we are registering new user
     foreach($new_user as $key => $value) {
       $form_state['values'][$key] = $value;
-    }   
-    logintoboggan_user_register_submit($form, $form_state);
-    //drupal_execute('user_register', $form_state);
-    $_SESSION ['anon_user']['type'] = NEWUSER;
-    $_SESSION ['anon_user']['immediate_login'] = TRUE;
-    $_SESSION ['anon_user']['user'] = $form_state['user'];
-    if($_SESSION ['anon_user']['immediate_login']) {
-      global $user;
-      $user = user_load($_SESSION ['anon_user']['user']->uid);
     }
+    if(module_exists('logintoboggan')) { 
+      logintoboggan_user_register_submit($form, $form_state);
+//        if(variable_get('logintoboggan_immediate_login_on_register', TRUE)) {
+//          global $user;
+//          $user = user_load($_SESSION ['anon_user']['user']->uid);
+//        }
+    } else {
+      drupal_execute('user_register', $form_state);
+    }
+    if($form_state['user']->uid) {
+      $_SESSION ['anon_user']['type'] = NEWUSER;
+      $_SESSION ['anon_user']['user'] = $form_state['user']; 
+    }    
   } 
   else if($existing_user['name']) {
       foreach($existing_user as $key => $value) {
@@ -91,16 +150,16 @@ function anon_nodecreate_validate_user_details($new_user, $existing_user) {
      global $user;
      if($user->uid) {
 	$_SESSION ['anon_user']['type'] = EXISTINGUSER;
-	$_SESSION ['anon_user']['immediate_login'] = TRUE;
 	$_SESSION ['anon_user']['user'] = $user;
      }
   } 
   else {
-     $_SESSION ['anon_user']['type'] = ANONUSER;   
+     $_SESSION ['anon_user']['type'] = ANONUSER;
+     $_SESSION ['anon_user']['user'] = drupal_anonymous_user();   
   }
-  //drupal_execute('user_register',)
-  return $status;
 }
+
+
 /**
  * Implementation of hook_form_alter().
  */
@@ -115,27 +174,37 @@ function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
       '#collapsible' => TRUE,
       '#tree' => TRUE,
     );
-    $form['anon_nodecreate']['new_user'] = array(
-      '#type' => 'fieldset',
+    $form['anon_nodecreate']['tabset'] = array(
+      '#type' => 'tabset',
+    );
+    $form['anon_nodecreate']['tabset']['new_user'] = array(
+      '#type' => 'tabpage',
       '#title' => t('New User'),
       '#description' => t('If you are a new user, please type in your email and preferred username. You will receive your account information on email.'),
     );
-    $form['anon_nodecreate'] ['new_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_register');
+    $form['anon_nodecreate']['tabset'] ['new_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_register');
 
-    $form['anon_nodecreate']['existing_user'] = array(
-      '#type' => 'fieldset',
+    $form['anon_nodecreate']['tabset']['existing_user'] = array(
+      '#type' => 'tabpage',
       '#title' => t('Existing User'),
       '#description' => t('If you already have an account, please type in your login details '),
     );
-    $form['anon_nodecreate'] ['existing_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_login'); 
+    $form['anon_nodecreate']['tabset']['existing_user'] ['form_fields'] = anon_nodecreate_get_user_form('user_login'); 
 
   }
 }
 
+/**
+ * Retrive the user register and user login form to display on node creation and edit screen.
+ *
+ * TODO: work with drupal_alter so that any contrib module that is changing these forms can still work.
+ */
+
+
 function anon_nodecreate_get_user_form($form_id) {
   switch ($form_id) {
     case 'user_register':
-      $form = drupal_retrieve_form('user_register', $form_state); 
+      $form = drupal_retrieve_form('user_register', $form_state);    
       foreach($form as &$value) {
         if($value['#required']) {
           $value['#required'] = 0;
@@ -147,6 +216,9 @@ function anon_nodecreate_get_user_form($form_id) {
     break;
     case 'user_login':
       $form = drupal_retrieve_form('user_login', $form_state);
+      if(module_exists('logintoboggan')) { 
+        logintoboggan_form_alter(&$form, $form_state, $form_id);
+      } 
       foreach($form as &$value) {
         if($value['#required']) {
           $value['#required'] = 0;
@@ -158,6 +230,11 @@ function anon_nodecreate_get_user_form($form_id) {
     break;
   }
 }
+
+/**
+ * Build the form variable to be displayed at admin settings page for this module.
+ */
+
 function anon_nodecreate_settings() {
   $form['anon_nodecreate'] ['option_set1'] = array(
     '#type' => 'fieldset',
@@ -165,7 +242,7 @@ function anon_nodecreate_settings() {
   );
   $form['anon_nodecreate'] ['option_set1']['anon_create_register'] = array(
     '#type' => 'radios',
-    '#title' => 'Registration fields',
+    '#title' => 'Registration fields: TODO for future module development. Only option 1 below works now.',
     '#options' => array('0' => 'Use default registration fields',
        '1' => 'Provide only email field for registration',
        '2' => 'Provide email and username field for registration'
@@ -173,9 +250,25 @@ function anon_nodecreate_settings() {
     '#default_value' => variable_get('anon_create_register', NULL),
     '#description' => 'Select the fields to be present while node is created anonymously',
   );
-
+  $form['anon_nodecreate'] ['option_set2'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Node creation',
+  );
+  $form['anon_nodecreate'] ['option_set2']['anon_create_node'] = array(
+    '#type' => 'radios',
+    '#title' => 'Anonymous node creation',
+    '#options' => array('0' => 'Allow saving node anonymously when user details do not validate.',
+       '1' => 'Do not allow anonymous node creation and set form error.',
+    ),
+    '#default_value' => variable_get('anon_create_node', NULL),
+    '#description' => 'Select the fields to be present while node is created anonymously',
+  );
  return system_settings_form($form);
 }
+
+/**
+ * Helper function to print data on screen with drupal_set_message. 
+ */
 
 function neodsm($variable) {
   $debug = '<pre>' . print_r($variable, true) . '</pre>'; 
