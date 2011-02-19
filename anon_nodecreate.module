@@ -11,6 +11,16 @@ define("ANONUSER", "2");
 
 
 /**
+ *  implementation of hook_perm().
+ */
+
+function anon_nodecreate_perm(){
+return array("access anon node create setting");
+}
+
+
+
+/**
  * Implementation of hook_menu().
  */
 function anon_nodecreate_menu() { 
@@ -19,7 +29,7 @@ function anon_nodecreate_menu() {
     'title' => 'Anon Node Create Settings',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('anon_nodecreate_settings'),
-    'access arguments' => array('access content'), 
+    'access arguments' => array('access anon node create setting'), 
     'type' => MENU_NORMAL_ITEM,
   );
   return $items;
@@ -99,7 +109,7 @@ function anon_nodecreate_validate_user_details($new_user, $existing_user) {
   }
   $donot_allow_anon = variable_get('anon_create_node', '1');
   if($newuser_error && $existinguser_error && $donot_allow_anon == '1') {
-    form_set_error('anon_nodecreate[new_user][form_fields][name', t('User details are not entered.'));    
+    form_set_error('anon_nodecreate', t('User details are not entered.'));  
   } else {
     anon_nodecreate_create_user($new_user, $existing_user);  
   }
@@ -116,11 +126,11 @@ function anon_nodecreate_create_user($new_user, $existing_user) {
     $name = $new_user['name'];
     $mail = $new_user['mail'];
     if (db_result(db_query("SELECT COUNT(*) FROM {users} WHERE name = '%s';", $name))) {
-      form_set_error('anon_nodecreate[new_user][form_fields][name', t('User name already exists. Please choose a different username.')); 
+      form_set_error("anon_nodecreate][tabset][new_user][form_fields][name", t('User name already exists. Please choose a different username.')); 
       return;
     }
     if (db_result(db_query("SELECT COUNT(*) FROM {users} WHERE mail = '%s';", $mail))) {
-      form_set_error('anon_nodecreate[new_user][form_fields][name', t('Provided email address is already registered. Please login.')); 
+      form_set_error("anon_nodecreate][tabset][new_user][form_fields][mail", t('Provided email address is already registered. Please login.')); 
       return;
     }
 
@@ -167,15 +177,31 @@ function anon_nodecreate_form_alter(&$form, &$form_state, $form_id) {
   global $user;
 
   if (((substr($form_id, -10)=='_node_form') && (!$user->uid))) {
-    $form['anon_nodecreate'] = array(
+    $form['testing'] = array(
       '#type' => 'fieldset',
       '#title' => t('User account details'),
       '#description' => t('You have either not logged in or do not have an account in this site. Please fill the relevant detail below to automatically associate your account to this content.'),
       '#collapsible' => TRUE,
       '#tree' => TRUE,
     );
+    $form['testing']['error1'] = array(
+      '#type' => 'textfield',
+      '#title' => t('error field'),
+    );
+    $form['testing']['error2'] = array(
+      '#type' => 'textfield',
+      '#title' => t('error fielqd'),
+    );
+
+    $form['anon_nodecreate'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('User account details'),
+      '#collapsible' => TRUE,
+      '#tree' => TRUE,
+    );
     $form['anon_nodecreate']['tabset'] = array(
       '#type' => 'tabset',
+      '#description' => t('You have either not logged in or do not have an account in this site. Please fill the relevant detail below to automatically associate your account to this content.'),
     );
     $form['anon_nodecreate']['tabset']['new_user'] = array(
       '#type' => 'tabpage',
